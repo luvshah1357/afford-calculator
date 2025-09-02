@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Work Days to Afford Calculator — With Full Withholdings</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --accent: #16a34a; --accent2: #86efac; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; display: grid; gap: 14px; max-width: 760px; }
+    h1 { font-size: 1.6rem; margin: 0 0 8px; }
+    .grid { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+    .grid > div { display: flex; flex-direction: column; gap: 6px; }
+    label { font-weight: 600; font-size: 0.95rem; }
+    input, select, button { padding: 10px; border-radius: 8px; border: 1px solid #ddd; font-size: 1rem; }
+    button { background: var(--accent); color: #fff; border: none; cursor: pointer; font-weight: 700; }
+    button:hover { filter: brightness(0.95); }
+    .full { grid-column: 1 / -1; }
+    #result { font-weight: 700; font-size: 1.05rem; }
+    .progress-container { background: #eee; border-radius: 12px; overflow: hidden; height: 28px; width: 100%; box-shadow: inset 0 1px 3px rgba(0,0,0,.15); }
+    .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent2)); text-align: center; color: white; line-height: 28px; font-size: 0.95rem; transition: width .6s ease; }
+    .muted { color: #555; font-size: 0.95rem; }
+    .breakdown { background: #fafafa; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; display: grid; gap: 8px; }
+    .row { display: flex; justify-content: space-between; gap: 8px; }
+    .row strong { font-weight: 700; }
+    .note { font-size: 0.85rem; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>💰 Work Days to Afford Calculator (with Withholdings)</h1>
+
+  <div class="grid">
+    <div>
+      <label for="incomeType">Income Type</label>
+      <select id="incomeType">
+        <option value="hourly">Hourly</option>
+        <option value="salary">Salary</option>
+      </select>
+    </div>
+
+    <div>
+      <label for="rate">Rate (Hourly $ or Annual $)</label>
+      <input type="number" id="rate" placeholder="e.g., 20 or 52000" />
+    </div>
+
+    <div>
+      <label for="hoursPerWeek">Hours per Week</label>
+      <input type="number" id="hoursPerWeek" placeholder="e.g., 40" />
+    </div>
+
+    <div>
+      <label for="itemCost">Item Cost ($)</label>
+      <input type="number" id="itemCost" placeholder="e.g., 1300" />
+    </div>
+
+    <div class="full"><hr /></div>
+
+    <div>
+      <label for="state">State</label>
+      <select id="state"></select>
+    </div>
+
+    <div>
+      <label for="expenses">Other Monthly Expenses ($)</label>
+      <input type="number" id="expenses" placeholder="e.g., 1500" />
+    </div>
+
+    <div>
+      <label for="extraDeductions">Other Monthly Withholdings ($)</label>
+      <input type="number" id="extraDeductions" placeholder="e.g., 200 (401k, benefits)" />
+    </div>
+
+    <div>
+      <label for="monthlySavings">Monthly Savings ($)</label>
+      <input type="number" id="monthlySavings" placeholder="e.g., 500" />
+    </div>
+
+    <div class="full note">
+      Advanced (optional): Override tax rates if you know your effective rates.
+    </div>
+
+    <div>
+      <label for="federalRate">Federal Tax Rate (%)</label>
+      <input type="number" id="federalRate" step="0.01" value="12" />
+    </div>
+
+    <div>
+      <label for="overrideStateRate">Override State Rate (%)</label>
+      <input type="number" id="overrideStateRate" step="0.01" placeholder="Leave blank to use state default" />
+    </div>
+
+    <div class="full">
+      <button id="calcBtn">Calculate</button>
+    </div>
+  </div>
+
+  <div id="result" class="full"></div>
+
+  <div class="progress-container full">
+    <div class="progress-bar" id="progressBar">0%</div>
+  </div>
+
+  <div id="incomePanel" class="breakdown full" style="display:none;">
+    <div class="row"><span class="muted">Gross Monthly Income</span><strong id="grossMonthly">$0.00</strong></div>
+    <div class="row"><span class="muted">Federal Income Tax</span><span id="federalTax">$0.00</span></div>
+    <div class="row"><span class="muted">State Income Tax</span><span id="stateTax">$0.00</span></div>
+    <div class="row"><span class="muted">Social Security (6.2%)</span><span id="ssTax">$0.00</span></div>
+    <div class="row"><span class="muted">Medicare (1.45%)</span><span id="medTax">$0.00</span></div>
+    <div class="row"><span class="muted">Other Monthly Withholdings</span><span id="otherWithhold">$0.00</span></div>
+    <div class="row"><span class="muted">Other Monthly Expenses</span><span id="otherExpenses">$0.00</span></div>
+    <div class="row"><span class="muted">Monthly Savings</span><span id="monthlySavingsDisplay">$0.00</span></div>
+    <div class="row"><strong>Net Monthly Income After Savings</strong><strong id="netMonthly">$0.00</strong></div>
+    <div class="note">State rates are simplified approximations. Use overrides to fine‑tune.</div>
+  </div>
+
+  <script>
+    // --- Simplified state rates (approximate top/flat effective rates; 0% where no wage income tax) ---
+    // Source inspiration: Tax Foundation state income tax rates (link provided by user).
+    const STATE_RATES = {
+      AL: 5.0, AK: 0.0, AZ: 2.5, AR: 4.4, CA: 13.3, CO: 4.4, CT: 6.99, DE: 6.6, FL: 0.0,
+      GA: 5.39, HI: 11.0, ID: 5.8, IL: 4.95, IN: 3.05, IA: 6.0, KS: 5.7, KY: 4.0, LA: 4.25,
+      ME: 7.15, MD: 5.75, MA: 5.0, MI: 4.25, MN: 9.85, MS: 5.0, MO: 4.8, MT: 5.9, NE: 6.64,
+      NV: 0.0, NH: 0.0, NJ: 10.75, NM: 5.9, NY: 10.9, NC: 4.5, ND: 2.5, OH: 3.5, OK: 4.75,
+      OR: 9.9, PA: 3.07, RI: 5.99, SC: 6.4, SD: 0.0, TN: 0.0, TX: 0.0, UT: 4.55, VT: 8.75,
+      VA: 5.75, WA: 0.0, WV: 5.12, WI: 7.65, WY: 0.0
+    };
+
+    // Populate state dropdown
+    const STATE_NAMES = {
+      AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado",
+      CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho",
+      IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana",
+      ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota",
+      MS: "Mississippi", MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada",
+      NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico", NY: "New York",
+      NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon",
+      PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota",
+      TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
+      WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming"
+    };
+
+    const stateSelect = document.getElementById('state');
+    Object.keys(STATE_NAMES).forEach(code => {
+      const opt = document.createElement('option');
+      opt.value = code; opt.textContent = STATE_NAMES[code];
+      stateSelect.appendChild(opt);
+    });
+    stateSelect.value = "CA"; // default
+
+    // Constant payroll tax rates
+    const SS_RATE = 0.062;     // Social Security (employee portion)
+    const MED_RATE = 0.0145;   // Medicare (employee portion)
+
+    function toMoney(n) { return '$' + (Math.round(n * 100) / 100).toFixed(2); }
+
+    function calculate() {
+      const incomeType = document.getElementById('incomeType').value;
+      const rate = parseFloat(document.getElementById('rate').value);
+      const hoursPerWeek = parseFloat(document.getElementById('hoursPerWeek').value);
+      const itemCost = parseFloat(document.getElementById('itemCost').value);
+      const expenses = parseFloat(document.getElementById('expenses').value)||0;
+      const extraDeductions = parseFloat(document.getElementById('extraDeductions').value)||0;
+      const monthlySavings = parseFloat(document.getElementById('monthlySavings').value)||0;
+      const federalRatePct = parseFloat(document.getElementById('federalRate').value)||0;
+      const overrideStateRatePct = document.getElementById('overrideStateRate').value;
+      const state = document.getElementById('state').value;
+
+      if (![rate, hoursPerWeek, itemCost].every(v => typeof v === 'number' && isFinite(v) && v > 0)) {
+        document.getElementById('result').textContent = '⚠️ Please fill out Rate, Hours/Week, and Item Cost with positive numbers.';
+        document.getElementById('incomePanel').style.display = 'none';
+        return;
+      }
+        // Hours to monthly hours using 4.33 weeks/month
+        const WEEKS_PER_MONTH = 4;
+        const grossMonthly = (incomeType === 'hourly')
+          ? rate * hoursPerWeek * WEEKS_PER_MONTH
+          : (rate / 52) * WEEKS_PER_MONTH; // convert annual salary -> weekly -> monthly
+
+      // Determine rates
+      const fedRate = Math.max(0, federalRatePct) / 100;
+      const stateRate = (overrideStateRatePct !== '' && !isNaN(parseFloat(overrideStateRatePct)))
+        ? Math.max(0, parseFloat(overrideStateRatePct)) / 100
+        : (STATE_RATES[state] || 0) / 100;
+
+      
+      // Withholdings on gross
+      const federalTax = grossMonthly * fedRate;
+      const stateTax = grossMonthly * stateRate;
+      const ssTax = grossMonthly * SS_RATE;
+      const medTax = grossMonthly * MED_RATE;
+
+      // Net monthly income
+      const netMonthlyBeforeSavings = grossMonthly - (federalTax + stateTax + ssTax + medTax + extraDeductions + expenses);
+      const netMonthlyAfterSavings = netMonthlyBeforeSavings - monthlySavings;
+
+      const resultEl = document.getElementById('result');
+      const bar = document.getElementById('progressBar');
+
+      if (netMonthlyAfterSavings <= 0) {
+        resultEl.textContent = '⚠️ After taxes, withholdings, and expenses, your net monthly income is ≤ $0. Increase income, reduce expenses, or adjust rates.';
+        bar.style.width = '0%';
+        bar.textContent = '0%';
+        document.getElementById('incomePanel').style.display = 'block';
+        document.getElementById('grossMonthly').textContent = toMoney(grossMonthly);
+        document.getElementById('federalTax').textContent = toMoney(federalTax);
+        document.getElementById('stateTax').textContent = toMoney(stateTax);
+        document.getElementById('ssTax').textContent = toMoney(ssTax);
+        document.getElementById('medTax').textContent = toMoney(medTax);
+        document.getElementById('otherWithhold').textContent = toMoney(extraDeductions);
+        document.getElementById('otherExpenses').textContent = toMoney(expenses);
+        document.getElementById('monthlySavingsDisplay').textContent = toMoney(monthlySavings);
+        document.getElementById('netMonthly').textContent = toMoney(netMonthlyAfterSavings);        return;
+      }
+
+      // Months/hours/days to afford item
+      const monthsNeeded = itemCost / netMonthlyAfterSavings;
+      const hoursPerDay = hoursPerWeek / 5; // 5-day workweek assumption
+      const totalWorkHours = monthsNeeded * hoursPerWeek * WEEKS_PER_MONTH;
+      const workDaysNeeded = totalWorkHours / hoursPerDay;
+
+      resultEl.textContent =
+        `You need about ${totalWorkHours.toFixed(1)} hours (~${workDaysNeeded.toFixed(1)} workdays) over ${monthsNeeded.toFixed(1)} months to afford this item after all withholdings.`;
+
+      // Progress bar: % of item you can save each month
+      let pct = (netMonthlyAfterSavings / itemCost) * 100;
+      if (pct > 100) pct = 100;
+      document.getElementById('progressBar').style.width = pct.toFixed(0)+'%';
+      document.getElementById('progressBar').textContent = pct.toFixed(0)+'% per month';
+
+      // Update breakdown panel
+      document.getElementById('incomePanel').style.display = 'block';
+      document.getElementById('grossMonthly').textContent = toMoney(grossMonthly);
+      document.getElementById('federalTax').textContent = toMoney(federalTax);
+      document.getElementById('stateTax').textContent = toMoney(stateTax);
+      document.getElementById('ssTax').textContent = toMoney(ssTax);
+      document.getElementById('medTax').textContent = toMoney(medTax);
+      document.getElementById('otherWithhold').textContent = toMoney(extraDeductions);
+      document.getElementById('otherExpenses').textContent = toMoney(expenses);
+      document.getElementById('monthlySavingsDisplay').textContent = toMoney(monthlySavings);      
+      document.getElementById('netMonthly').textContent = toMoney(netMonthlyAfterSavings);
+    }
+
+    document.getElementById('calcBtn').addEventListener('click', calculate);
+  </script>
+</body>
+</html>
