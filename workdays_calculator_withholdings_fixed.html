@@ -70,6 +70,11 @@
       <input type="number" id="extraDeductions" placeholder="e.g., 200 (401k, benefits)" />
     </div>
 
+    <div>
+      <label for="monthlySavings">Monthly Savings ($)</label>
+      <input type="number" id="monthlySavings" placeholder="e.g., 500" />
+    </div>
+
     <div class="full note">
       Advanced (optional): Override tax rates if you know your effective rates.
     </div>
@@ -103,8 +108,9 @@
     <div class="row"><span class="muted">Medicare (1.45%)</span><span id="medTax">$0.00</span></div>
     <div class="row"><span class="muted">Other Monthly Withholdings</span><span id="otherWithhold">$0.00</span></div>
     <div class="row"><span class="muted">Other Monthly Expenses</span><span id="otherExpenses">$0.00</span></div>
-    <div class="row"><strong>Net Monthly Income</strong><strong id="netMonthly">$0.00</strong></div>
-    <div class="note">State rates are simplified flat approximations derived from Tax Foundation state income tax data. Actual taxes vary by income, filing status, local taxes, and deductions. Use overrides to fine‑tune.</div>
+    <div class="row"><span class="muted">Monthly Savings</span><span id="monthlySavingsDisplay">$0.00</span></div>
+    <div class="row"><strong>Net Monthly Income After Savings</strong><strong id="netMonthly">$0.00</strong></div>
+    <div class="note">State rates are simplified approximations. Use overrides to fine‑tune.</div>
   </div>
 
   <script>
@@ -152,9 +158,10 @@
       const rate = parseFloat(document.getElementById('rate').value);
       const hoursPerWeek = parseFloat(document.getElementById('hoursPerWeek').value);
       const itemCost = parseFloat(document.getElementById('itemCost').value);
-      const expenses = parseFloat(document.getElementById('expenses').value) || 0;
-      const extraDeductions = parseFloat(document.getElementById('extraDeductions').value) || 0;
-      const federalRatePct = parseFloat(document.getElementById('federalRate').value) || 0;
+      const expenses = parseFloat(document.getElementById('expenses').value)||0;
+      const extraDeductions = parseFloat(document.getElementById('extraDeductions').value)||0;
+      const monthlySavings = parseFloat(document.getElementById('monthlySavings').value)||0;
+      const federalRatePct = parseFloat(document.getElementById('federalRate').value)||0;
       const overrideStateRatePct = document.getElementById('overrideStateRate').value;
       const state = document.getElementById('state').value;
 
@@ -175,6 +182,7 @@
         ? Math.max(0, parseFloat(overrideStateRatePct)) / 100
         : (STATE_RATES[state] || 0) / 100;
 
+      
       // Withholdings on gross
       const federalTax = grossMonthly * fedRate;
       const stateTax = grossMonthly * stateRate;
@@ -182,13 +190,13 @@
       const medTax = grossMonthly * MED_RATE;
 
       // Net monthly income
-      const netMonthlyBeforeFixed = grossMonthly - (federalTax + stateTax + ssTax + medTax);
-      const netMonthly = netMonthlyBeforeFixed - extraDeductions - expenses;
+      const netMonthlyBeforeSavings = grossMonthly - (federalTax + stateTax + ssTax + medTax + extraDeductions + expenses);
+      const netMonthlyAfterSavings = netMonthlyBeforeSavings - monthlySavings;
 
       const resultEl = document.getElementById('result');
       const bar = document.getElementById('progressBar');
 
-      if (netMonthly <= 0) {
+      if (netMonthlyAfterSavings <= 0) {
         resultEl.textContent = '⚠️ After taxes, withholdings, and expenses, your net monthly income is ≤ $0. Increase income, reduce expenses, or adjust rates.';
         bar.style.width = '0%';
         bar.textContent = '0%';
@@ -200,12 +208,12 @@
         document.getElementById('medTax').textContent = toMoney(medTax);
         document.getElementById('otherWithhold').textContent = toMoney(extraDeductions);
         document.getElementById('otherExpenses').textContent = toMoney(expenses);
-        document.getElementById('netMonthly').textContent = toMoney(netMonthly);
-        return;
+        document.getElementById('monthlySavingsDisplay').textContent = toMoney(monthlySavings);
+        document.getElementById('netMonthly').textContent = toMoney(netMonthlyAfterSavings);        return;
       }
 
       // Months/hours/days to afford item
-      const monthsNeeded = itemCost / netMonthly;
+      const monthsNeeded = itemCost / netMonthlyAfterSavings;
       const hoursPerDay = hoursPerWeek / 5; // 5-day workweek assumption
       const totalWorkHours = monthsNeeded * hoursPerWeek * WEEKS_PER_MONTH;
       const workDaysNeeded = totalWorkHours / hoursPerDay;
@@ -214,10 +222,10 @@
         `You need about ${totalWorkHours.toFixed(1)} hours (~${workDaysNeeded.toFixed(1)} workdays) over ${monthsNeeded.toFixed(1)} months to afford this item after all withholdings.`;
 
       // Progress bar: % of item you can save each month
-      let pct = (netMonthly / itemCost) * 100;
+      let pct = (netMonthlyAfterSavings / itemCost) * 100;
       if (pct > 100) pct = 100;
-      bar.style.width = pct.toFixed(0) + '%';
-      bar.textContent = pct.toFixed(0) + '% per month';
+      document.getElementById('progressBar').style.width = pct.toFixed(0)+'%';
+      document.getElementById('progressBar').textContent = pct.toFixed(0)+'% per month';
 
       // Update breakdown panel
       document.getElementById('incomePanel').style.display = 'block';
@@ -228,7 +236,8 @@
       document.getElementById('medTax').textContent = toMoney(medTax);
       document.getElementById('otherWithhold').textContent = toMoney(extraDeductions);
       document.getElementById('otherExpenses').textContent = toMoney(expenses);
-      document.getElementById('netMonthly').textContent = toMoney(netMonthly);
+      document.getElementById('monthlySavingsDisplay').textContent = toMoney(monthlySavings);      
+      document.getElementById('netMonthly').textContent = toMoney(netMonthlyAfterSavings);
     }
 
     document.getElementById('calcBtn').addEventListener('click', calculate);
